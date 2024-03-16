@@ -735,7 +735,6 @@ namespace CS2_SimpleAdmin
 			}
 		}
 
-		[ConsoleCommand("css_tp", "Teleport to a player.")]
 		[ConsoleCommand("css_tpto", "Teleport to a player.")]
 		[ConsoleCommand("css_goto", "Teleport to a player.")]
 		[CommandHelper(1, "<#userid or name>")]
