@@ -8,7 +8,7 @@ namespace CS2_SimpleAdmin.Menus
 	{
 		public static BaseMenu CreateMenu(string title)
 		{
-			return CS2_SimpleAdmin.Instance.Config.UseChatMenu ? new ChatMenu(title) : new CenterHtmlMenu(title);
+			return CS2_SimpleAdmin.Instance.Config.UseChatMenu ? new ChatMenu(title) : new CenterHtmlMenu(title, CS2_SimpleAdmin.Instance);
 		}
 
 		public static void OpenMenu(CCSPlayerController player, BaseMenu menu)
@@ -35,15 +35,19 @@ namespace CS2_SimpleAdmin.Menus
 				return;
 			}
 
-			//bool xpRights = AdminManager.PlayerHasPermissions(admin, "@wcs/xp");
-
-			BaseMenu menu = AdminMenu.CreateMenu("Simple Admin");
-			List<ChatMenuOptionData> options = new()
-			{
+			BaseMenu menu = CreateMenu("Simple Admin");
+			List<ChatMenuOptionData> options =
+			[
 				new ChatMenuOptionData("Manage Players", () => ManagePlayersMenu.OpenMenu(admin)),
 				new ChatMenuOptionData("Manage Server", () => ManageServerMenu.OpenMenu(admin)),
 				new ChatMenuOptionData("Fun actions", () => FunActionsMenu.OpenMenu(admin)),
-			};
+			];
+
+			List<CustomServerCommandData> customCommands = CS2_SimpleAdmin.Instance.Config.CustomServerCommands;
+			if (customCommands.Count > 0)
+			{
+				options.Add(new ChatMenuOptionData("Custom Commands", () => CustomCommandsMenu.OpenMenu(admin)));
+			}
 
 			if (AdminManager.PlayerHasPermissions(admin, "@css/root"))
 				options.Add(new ChatMenuOptionData("Manage Admins", () => ManageAdminsMenu.OpenMenu(admin)));

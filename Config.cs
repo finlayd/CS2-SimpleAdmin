@@ -22,11 +22,14 @@ namespace CS2_SimpleAdmin
 
 		[JsonPropertyName("Command")]
 		public string Command { get; set; } = "";
+
+		[JsonPropertyName("ExecuteOnClient")]
+		public bool ExecuteOnClient { get; set; } = false;
 	}
 
 	public class CS2_SimpleAdminConfig : BasePluginConfig
 	{
-		[JsonPropertyName("ConfigVersion")] public override int Version { get; set; } = 8;
+		[JsonPropertyName("ConfigVersion")] public override int Version { get; set; } = 10;
 
 		[JsonPropertyName("DatabaseHost")]
 		public string DatabaseHost { get; set; } = "";
@@ -43,6 +46,9 @@ namespace CS2_SimpleAdmin
 		[JsonPropertyName("DatabaseName")]
 		public string DatabaseName { get; set; } = "";
 
+		[JsonPropertyName("EnableMetrics")]
+		public bool EnableMetrics { get; set; } = true;
+
 		[JsonPropertyName("UseChatMenu")]
 		public bool UseChatMenu { get; set; } = false;
 
@@ -54,6 +60,8 @@ namespace CS2_SimpleAdmin
 
 		[JsonPropertyName("BanType")]
 		public int BanType { get; set; } = 1;
+		[JsonPropertyName("MultiServerMode")]
+		public bool MultiServerMode { get; set; } = true;
 
 		[JsonPropertyName("ExpireOldIpBans")]
 		public int ExpireOldIpBans { get; set; } = 0;

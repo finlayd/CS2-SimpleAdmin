@@ -1,11 +1,10 @@
-﻿using CounterStrikeSharp.API;
+using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Core.Translations;
 using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Commands.Targeting;
-using CounterStrikeSharp.API.Modules.Entities;
 using System.Text;
 
 namespace CS2_SimpleAdmin
@@ -21,7 +20,7 @@ namespace CS2_SimpleAdmin
 			string callerName = caller == null ? "Console" : caller.PlayerName;
 
 			int time = 0;
-			string reason = CS2_SimpleAdmin._localizer?["sa_unknown"] ?? "Unknown";
+			string reason = _localizer?["sa_unknown"] ?? "Unknown";
 
 			TargetResult? targets = GetTarget(command);
 			if (targets == null) return;
@@ -30,12 +29,6 @@ namespace CS2_SimpleAdmin
 			if (playersToTarget.Count > 1 && Config.DisableDangerousCommands || playersToTarget.Count == 0)
 			{
 				return;
-			}
-
-			if (_discordWebhookClientLog != null && _localizer != null)
-			{
-				string communityUrl = caller != null ? "<" + new SteamID(caller.SteamID).ToCommunityUrl().ToString() + ">" : "<https://steamcommunity.com/profiles/0>";
-				_discordWebhookClientLog.SendMessageAsync(Helper.GenerateMessageDiscord(_localizer["sa_discord_log_command", $"[{callerName}]({communityUrl})", command.GetCommandString]));
 			}
 
 			int.TryParse(command.GetArg(2), out time);
@@ -50,12 +43,12 @@ namespace CS2_SimpleAdmin
 			{
 				if (caller!.CanTarget(player))
 				{
-					Gag(caller, player, time, reason, callerName, _muteManager, playerPenaltyManager);
+					Gag(caller, player, time, reason, callerName, _muteManager, playerPenaltyManager, command);
 				}
 			});
 		}
 
-		internal void Gag(CCSPlayerController? caller, CCSPlayerController player, int time, string reason, string? callerName = null, MuteManager? muteManager = null, PlayerPenaltyManager? playerPenaltyManager = null)
+		internal void Gag(CCSPlayerController? caller, CCSPlayerController player, int time, string reason, string? callerName = null, MuteManager? muteManager = null, PlayerPenaltyManager? playerPenaltyManager = null, CommandInfo? command = null)
 		{
 			if (_database == null) return;
 			callerName ??= caller == null ? "Console" : caller.PlayerName;
@@ -76,8 +69,6 @@ namespace CS2_SimpleAdmin
 				IpAddress = caller?.IpAddress?.Split(":")[0]
 			};
 
-			Helper.LogCommand(caller, $"css_gag {player?.SteamID} {time} {reason}");
-
 			Task.Run(async () =>
 			{
 				await muteManager.MutePlayer(playerInfo, adminInfo, reason, time);
@@ -86,8 +77,7 @@ namespace CS2_SimpleAdmin
 			if (TagsDetected)
 				Server.ExecuteCommand($"css_tag_mute {player!.SteamID}");
 
-			playerPenaltyManager.AddPenalty(player!.Slot, PenaltyType.Gag, DateTime.Now.AddMinutes(time), time);
-
+			PlayerPenaltyManager.AddPenalty(player!.Slot, PenaltyType.Gag, DateTime.Now.AddMinutes(time), time);
 			if (time == 0)
 			{
 				if (!player!.IsBot && !player.IsHLTV)
@@ -134,6 +124,13 @@ namespace CS2_SimpleAdmin
 					}
 				}
 			}
+
+			if (command != null)
+			{
+				Helper.SendDiscordLogMessage(caller, command, _discordWebhookClientLog, _localizer);
+				Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Gag, _discordWebhookClientPenalty, _localizer);
+				Helper.LogCommand(caller, command);
+			}
 		}
 
 		[ConsoleCommand("css_addgag")]
@@ -157,14 +154,8 @@ namespace CS2_SimpleAdmin
 				return;
 			}
 
-			if (_discordWebhookClientLog != null && _localizer != null)
-			{
-				string communityUrl = caller != null ? "<" + new SteamID(caller.SteamID).ToCommunityUrl().ToString() + ">" : "<https://steamcommunity.com/profiles/0>";
-				_discordWebhookClientLog.SendMessageAsync(Helper.GenerateMessageDiscord(_localizer["sa_discord_log_command", $"[{callerName}]({communityUrl})", command.GetCommandString]));
-			}
-
 			int time = 0;
-			string reason = CS2_SimpleAdmin._localizer?["sa_unknown"] ?? "Unknown";
+			string reason = _localizer?["sa_unknown"] ?? "Unknown";
 
 			MuteManager _muteManager = new(_database);
 			PlayerPenaltyManager playerPenaltyManager = new PlayerPenaltyManager();
@@ -180,8 +171,6 @@ namespace CS2_SimpleAdmin
 				Name = caller?.PlayerName,
 				IpAddress = caller?.IpAddress?.Split(":")[0]
 			};
-
-			Helper.LogCommand(caller, command);
 
 			List<CCSPlayerController> matches = Helper.GetPlayerFromSteamid64(steamid);
 			if (matches.Count == 1)
@@ -241,8 +230,10 @@ namespace CS2_SimpleAdmin
 					if (TagsDetected)
 						Server.ExecuteCommand($"css_tag_mute {player!.SteamID}");
 
-					playerPenaltyManager.AddPenalty(player!.Slot, PenaltyType.Gag, DateTime.Now.AddMinutes(time), time);
+					PlayerPenaltyManager.AddPenalty(player!.Slot, PenaltyType.Gag, DateTime.Now.AddMinutes(time), time);
 				}
+
+				Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Gag, _discordWebhookClientPenalty, _localizer);
 			}
 
 			Task.Run(async () =>
@@ -250,18 +241,27 @@ namespace CS2_SimpleAdmin
 				await _muteManager.AddMuteBySteamid(steamid, adminInfo, reason, time, 0);
 			});
 
-			command.ReplyToCommand($"Gagged player with steamid {steamid}.");
+			if (command != null)
+			{
+				Helper.SendDiscordLogMessage(caller, command, _discordWebhookClientLog, _localizer);
+				Helper.LogCommand(caller, command);
+			}
+
+			command?.ReplyToCommand($"Gagged player with steamid {steamid}.");
 		}
 
 		[ConsoleCommand("css_ungag")]
 		[RequiresPermissions("@css/chat")]
-		[CommandHelper(minArgs: 1, usage: "<steamid or name>", whoCanExecute: CommandUsage.CLIENT_AND_SERVER)]
+		[CommandHelper(minArgs: 1, usage: "<steamid or name> [reason]", whoCanExecute: CommandUsage.CLIENT_AND_SERVER)]
 		public void OnUngagCommand(CCSPlayerController? caller, CommandInfo command)
 		{
 			if (_database == null) return;
 			string callerName = caller == null ? "Console" : caller.PlayerName;
+			string callerSteamId = caller?.SteamID.ToString() ?? "Console";
+
 			string foundPlayerName = string.Empty;
 			string foundPlayerSteamId64 = string.Empty;
+			string reason = command.GetArg(2);
 
 			if (command.GetArg(1).Length <= 1)
 			{
@@ -269,12 +269,7 @@ namespace CS2_SimpleAdmin
 				return;
 			}
 
-			if (_discordWebhookClientLog != null && _localizer != null)
-			{
-				string communityUrl = caller != null ? "<" + new SteamID(caller.SteamID).ToCommunityUrl().ToString() + ">" : "<https://steamcommunity.com/profiles/0>";
-				_discordWebhookClientLog.SendMessageAsync(Helper.GenerateMessageDiscord(_localizer["sa_discord_log_command", $"[{callerName}]({communityUrl})", command.GetCommandString]));
-			}
-
+			Helper.SendDiscordLogMessage(caller, command, _discordWebhookClientLog, _localizer);
 			Helper.LogCommand(caller, command);
 
 			bool found = false;
@@ -292,7 +287,7 @@ namespace CS2_SimpleAdmin
 					CCSPlayerController? player = matches.FirstOrDefault();
 					if (player != null && player.IsValid)
 					{
-						playerPenaltyManager.RemovePenaltiesByType(player!.Slot, PenaltyType.Gag);
+						PlayerPenaltyManager.RemovePenaltiesByType(player!.Slot, PenaltyType.Gag);
 
 						if (TagsDetected)
 							Server.ExecuteCommand($"css_tag_unmute {player!.SteamID}");
@@ -311,7 +306,7 @@ namespace CS2_SimpleAdmin
 					CCSPlayerController? player = matches.FirstOrDefault();
 					if (player != null && player.IsValid)
 					{
-						playerPenaltyManager.RemovePenaltiesByType(player!.Slot, PenaltyType.Gag);
+						PlayerPenaltyManager.RemovePenaltiesByType(player!.Slot, PenaltyType.Gag);
 
 						if (TagsDetected)
 							Server.ExecuteCommand($"css_tag_unmute {player!.SteamID.ToString()}");
@@ -327,12 +322,12 @@ namespace CS2_SimpleAdmin
 
 			if (found)
 			{
-				Task.Run(async () => { await _muteManager.UnmutePlayer(foundPlayerSteamId64, 0); }); // Unmute by type 0 (gag)
+				Task.Run(async () => { await _muteManager.UnmutePlayer(foundPlayerSteamId64, callerSteamId, reason, 0); }); // Unmute by type 0 (gag)
 				command.ReplyToCommand($"Ungaged player {foundPlayerName}.");
 			}
 			else
 			{
-				Task.Run(async () => { await _muteManager.UnmutePlayer(pattern, 0); }); // Unmute by type 0 (gag)
+				Task.Run(async () => { await _muteManager.UnmutePlayer(pattern, callerSteamId, reason, 0); }); // Unmute by type 0 (gag)
 				command.ReplyToCommand($"Ungaged offline player with pattern {pattern}.");
 			}
 
@@ -376,7 +371,7 @@ namespace CS2_SimpleAdmin
 			string callerName = caller == null ? "Console" : caller.PlayerName;
 
 			int time = 0;
-			string reason = CS2_SimpleAdmin._localizer?["sa_unknown"] ?? "Unknown";
+			string reason = _localizer?["sa_unknown"] ?? "Unknown";
 
 			TargetResult? targets = GetTarget(command);
 			if (targets == null) return;
@@ -385,12 +380,6 @@ namespace CS2_SimpleAdmin
 			if (playersToTarget.Count > 1 && Config.DisableDangerousCommands || playersToTarget.Count == 0)
 			{
 				return;
-			}
-
-			if (_discordWebhookClientLog != null && _localizer != null)
-			{
-				string communityUrl = caller != null ? "<" + new SteamID(caller.SteamID).ToCommunityUrl().ToString() + ">" : "<https://steamcommunity.com/profiles/0>";
-				_discordWebhookClientLog.SendMessageAsync(Helper.GenerateMessageDiscord(_localizer["sa_discord_log_command", $"[{callerName}]({communityUrl})", command.GetCommandString]));
 			}
 
 			int.TryParse(command.GetArg(2), out time);
@@ -405,12 +394,12 @@ namespace CS2_SimpleAdmin
 			{
 				if (caller!.CanTarget(player))
 				{
-					Mute(caller, player, time, reason, callerName, _muteManager, playerPenaltyManager);
+					Mute(caller, player, time, reason, callerName, _muteManager, playerPenaltyManager, command);
 				}
 			});
 		}
 
-		internal void Mute(CCSPlayerController? caller, CCSPlayerController player, int time, string reason, string? callerName = null, MuteManager? muteManager = null, PlayerPenaltyManager? playerPenaltyManager = null)
+		internal void Mute(CCSPlayerController? caller, CCSPlayerController player, int time, string reason, string? callerName = null, MuteManager? muteManager = null, PlayerPenaltyManager? playerPenaltyManager = null, CommandInfo? command = null)
 		{
 			if (_database == null) return;
 			callerName ??= caller == null ? "Console" : caller.PlayerName;
@@ -431,8 +420,6 @@ namespace CS2_SimpleAdmin
 				IpAddress = caller?.IpAddress?.Split(":")[0]
 			};
 
-			Helper.LogCommand(caller, $"css_mute {player?.SteamID} {time} {reason}");
-
 			player!.VoiceFlags = VoiceFlags.Muted;
 
 			Task.Run(async () =>
@@ -440,7 +427,7 @@ namespace CS2_SimpleAdmin
 				await muteManager.MutePlayer(playerInfo, adminInfo, reason, time, 1);
 			});
 
-			playerPenaltyManager.AddPenalty(player!.Slot, PenaltyType.Mute, DateTime.Now.AddMinutes(time), time);
+			PlayerPenaltyManager.AddPenalty(player!.Slot, PenaltyType.Mute, DateTime.Now.AddMinutes(time), time);
 
 			if (time == 0)
 			{
@@ -483,6 +470,13 @@ namespace CS2_SimpleAdmin
 					}
 				}
 			}
+
+			if (command != null)
+			{
+				Helper.SendDiscordLogMessage(caller, command, _discordWebhookClientLog, _localizer);
+				Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Mute, _discordWebhookClientPenalty, _localizer);
+				Helper.LogCommand(caller, command);
+			}
 		}
 
 		[ConsoleCommand("css_addmute")]
@@ -505,16 +499,8 @@ namespace CS2_SimpleAdmin
 				return;
 			}
 
-			if (_discordWebhookClientLog != null && _localizer != null)
-			{
-				string communityUrl = caller != null ? "<" + new SteamID(caller.SteamID).ToCommunityUrl().ToString() + ">" : "<https://steamcommunity.com/profiles/0>";
-				_discordWebhookClientLog.SendMessageAsync(Helper.GenerateMessageDiscord(_localizer["sa_discord_log_command", $"[{callerName}]({communityUrl})", command.GetCommandString]));
-			}
-
-			Helper.LogCommand(caller, command);
-
 			int time = 0;
-			string reason = CS2_SimpleAdmin._localizer?["sa_unknown"] ?? "Unknown";
+			string reason = _localizer?["sa_unknown"] ?? "Unknown";
 
 			MuteManager _muteManager = new(_database);
 			PlayerPenaltyManager playerPenaltyManager = new PlayerPenaltyManager();
@@ -543,7 +529,7 @@ namespace CS2_SimpleAdmin
 						return;
 					}
 
-					playerPenaltyManager.AddPenalty(player!.Slot, PenaltyType.Mute, DateTime.Now.AddMinutes(time), time);
+					PlayerPenaltyManager.AddPenalty(player!.Slot, PenaltyType.Mute, DateTime.Now.AddMinutes(time), time);
 
 					if (time == 0)
 					{
@@ -586,6 +572,8 @@ namespace CS2_SimpleAdmin
 						}
 					}
 				}
+
+				Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Mute, _discordWebhookClientPenalty, _localizer);
 			}
 
 			Task.Run(async () =>
@@ -593,7 +581,13 @@ namespace CS2_SimpleAdmin
 				await _muteManager.AddMuteBySteamid(steamid, adminInfo, reason, time, 1);
 			});
 
-			command.ReplyToCommand($"Muted player with steamid {steamid}.");
+			if (command != null)
+			{
+				Helper.SendDiscordLogMessage(caller, command, _discordWebhookClientLog, _localizer);
+				Helper.LogCommand(caller, command);
+			}
+
+			command?.ReplyToCommand($"Muted player with steamid {steamid}.");
 		}
 
 		[ConsoleCommand("css_unmute")]
@@ -603,8 +597,11 @@ namespace CS2_SimpleAdmin
 		{
 			if (_database == null) return;
 			string callerName = caller == null ? "Console" : caller.PlayerName;
+			string callerSteamId = caller?.SteamID.ToString() ?? "Console";
+
 			string foundPlayerName = string.Empty;
 			string foundPlayerSteamId64 = string.Empty;
+			string reason = command.GetArg(2);
 
 			if (command.GetArg(1).Length <= 1)
 			{
@@ -612,18 +609,13 @@ namespace CS2_SimpleAdmin
 				return;
 			}
 
-			if (_discordWebhookClientLog != null && _localizer != null)
-			{
-				string communityUrl = caller != null ? "<" + new SteamID(caller.SteamID).ToCommunityUrl().ToString() + ">" : "<https://steamcommunity.com/profiles/0>";
-				_discordWebhookClientLog.SendMessageAsync(Helper.GenerateMessageDiscord(_localizer["sa_discord_log_command", $"[{callerName}]({communityUrl})", command.GetCommandString]));
-			}
-
+			Helper.SendDiscordLogMessage(caller, command, _discordWebhookClientLog, _localizer);
 			Helper.LogCommand(caller, command);
 
 			string pattern = command.GetArg(1);
 			bool found = false;
 			MuteManager _muteManager = new(_database);
-			PlayerPenaltyManager playerPenaltyManager = new PlayerPenaltyManager();
+			PlayerPenaltyManager playerPenaltyManager = new();
 
 			if (Helper.IsValidSteamID64(pattern))
 			{
@@ -633,7 +625,7 @@ namespace CS2_SimpleAdmin
 					CCSPlayerController? player = matches.FirstOrDefault();
 					if (player != null && player.IsValid)
 					{
-						playerPenaltyManager.RemovePenaltiesByType(player!.Slot, PenaltyType.Mute);
+						PlayerPenaltyManager.RemovePenaltiesByType(player!.Slot, PenaltyType.Mute);
 						player.VoiceFlags = VoiceFlags.Normal;
 						found = true;
 						foundPlayerName = player.PlayerName;
@@ -649,7 +641,7 @@ namespace CS2_SimpleAdmin
 					CCSPlayerController? player = matches.FirstOrDefault();
 					if (player != null && player.IsValid)
 					{
-						playerPenaltyManager.RemovePenaltiesByType(player!.Slot, PenaltyType.Mute);
+						PlayerPenaltyManager.RemovePenaltiesByType(player!.Slot, PenaltyType.Mute);
 						player.VoiceFlags = VoiceFlags.Normal;
 						pattern = player.SteamID.ToString();
 						found = true;
@@ -661,12 +653,12 @@ namespace CS2_SimpleAdmin
 
 			if (found)
 			{
-				Task.Run(async () => { await _muteManager.UnmutePlayer(foundPlayerSteamId64, 1); }); // Unmute by type 1 (mute)
+				Task.Run(async () => { await _muteManager.UnmutePlayer(foundPlayerSteamId64, callerSteamId, reason, 1); }); // Unmute by type 1 (mute)
 				command.ReplyToCommand($"Unmuted player {foundPlayerName}.");
 			}
 			else
 			{
-				Task.Run(async () => { await _muteManager.UnmutePlayer(pattern, 1); }); // Unmute by type 1 (mute)
+				Task.Run(async () => { await _muteManager.UnmutePlayer(pattern, callerSteamId, reason, 1); }); // Unmute by type 1 (mute)
 				command.ReplyToCommand($"Unmuted offline player with pattern {pattern}.");
 			}
 
@@ -716,12 +708,6 @@ namespace CS2_SimpleAdmin
 				return;
 			}
 
-			if (_discordWebhookClientLog != null && _localizer != null)
-			{
-				string communityUrl = caller != null ? "<" + new SteamID(caller.SteamID).ToCommunityUrl().ToString() + ">" : "<https://steamcommunity.com/profiles/0>";
-				_discordWebhookClientLog.SendMessageAsync(Helper.GenerateMessageDiscord(_localizer["sa_discord_log_command", $"[{callerName}]({communityUrl})", command.GetCommandString]));
-			}
-
 			int.TryParse(command.GetArg(2), out time);
 
 			if (command.ArgCount >= 3 && command.GetArg(3).Length > 0)
@@ -734,12 +720,12 @@ namespace CS2_SimpleAdmin
 			{
 				if (caller!.CanTarget(player))
 				{
-					Silence(caller, player, time, reason, callerName, _muteManager, playerPenaltyManager);
+					Silence(caller, player, time, reason, callerName, _muteManager, playerPenaltyManager, command);
 				}
 			});
 		}
 
-		internal void Silence(CCSPlayerController? caller, CCSPlayerController player, int time, string reason, string? callerName = null, MuteManager? muteManager = null, PlayerPenaltyManager? playerPenaltyManager = null)
+		internal void Silence(CCSPlayerController? caller, CCSPlayerController player, int time, string reason, string? callerName = null, MuteManager? muteManager = null, PlayerPenaltyManager? playerPenaltyManager = null, CommandInfo? command = null)
 		{
 			if (_database == null) return;
 			callerName ??= caller == null ? "Console" : caller.PlayerName;
@@ -760,8 +746,6 @@ namespace CS2_SimpleAdmin
 				IpAddress = caller?.IpAddress?.Split(":")[0]
 			};
 
-			Helper.LogCommand(caller, $"css_silence {player?.SteamID} {time} {reason}");
-
 			Task.Run(async () =>
 			{
 				await muteManager.MutePlayer(playerInfo, adminInfo, reason, time, 2);
@@ -771,8 +755,7 @@ namespace CS2_SimpleAdmin
 				Server.ExecuteCommand($"css_tag_mute {player!.SteamID}");
 
 			player!.VoiceFlags = VoiceFlags.Muted;
-
-			playerPenaltyManager.AddPenalty(player!.Slot, PenaltyType.Silence, DateTime.Now.AddMinutes(time), time);
+			PlayerPenaltyManager.AddPenalty(player!.Slot, PenaltyType.Silence, DateTime.Now.AddMinutes(time), time);
 
 			if (time == 0)
 			{
@@ -820,6 +803,13 @@ namespace CS2_SimpleAdmin
 					}
 				}
 			}
+
+			if (command != null)
+			{
+				Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Mute, _discordWebhookClientPenalty, _localizer);
+				Helper.SendDiscordLogMessage(caller, command, _discordWebhookClientLog, _localizer);
+				Helper.LogCommand(caller, command);
+			}
 		}
 
 		[ConsoleCommand("css_addsilence")]
@@ -841,14 +831,6 @@ namespace CS2_SimpleAdmin
 				command.ReplyToCommand($"Invalid SteamID64.");
 				return;
 			}
-
-			if (_discordWebhookClientLog != null && _localizer != null)
-			{
-				string communityUrl = caller != null ? "<" + new SteamID(caller.SteamID).ToCommunityUrl().ToString() + ">" : "<https://steamcommunity.com/profiles/0>";
-				_discordWebhookClientLog.SendMessageAsync(Helper.GenerateMessageDiscord(_localizer["sa_discord_log_command", $"[{callerName}]({communityUrl})", command.GetCommandString]));
-			}
-
-			Helper.LogCommand(caller, command);
 
 			int time = 0;
 			string reason = CS2_SimpleAdmin._localizer?["sa_unknown"] ?? "Unknown";
@@ -883,7 +865,7 @@ namespace CS2_SimpleAdmin
 					if (TagsDetected)
 						Server.ExecuteCommand($"css_tag_mute {player!.SteamID}");
 
-					playerPenaltyManager.AddPenalty(player!.Slot, PenaltyType.Silence, DateTime.Now.AddMinutes(time), time);
+					PlayerPenaltyManager.AddPenalty(player!.Slot, PenaltyType.Silence, DateTime.Now.AddMinutes(time), time);
 
 					if (time == 0)
 					{
@@ -925,6 +907,8 @@ namespace CS2_SimpleAdmin
 							}
 						}
 					}
+
+					Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Mute, _discordWebhookClientPenalty, _localizer);
 				}
 			}
 			Task.Run(async () =>
@@ -932,18 +916,27 @@ namespace CS2_SimpleAdmin
 				await _muteManager.AddMuteBySteamid(steamid, adminInfo, reason, time, 2);
 			});
 
-			command.ReplyToCommand($"Silenced player with steamid {steamid}.");
+			if (command != null)
+			{
+				Helper.SendDiscordLogMessage(caller, command, _discordWebhookClientLog, _localizer);
+				Helper.LogCommand(caller, command);
+			}
+
+			command?.ReplyToCommand($"Silenced player with steamid {steamid}.");
 		}
 
 		[ConsoleCommand("css_unsilence")]
 		[RequiresPermissions("@css/chat")]
-		[CommandHelper(minArgs: 1, usage: "<steamid or name>", whoCanExecute: CommandUsage.CLIENT_AND_SERVER)]
+		[CommandHelper(minArgs: 1, usage: "<steamid or name> [reason]", whoCanExecute: CommandUsage.CLIENT_AND_SERVER)]
 		public void OnUnsilenceCommand(CCSPlayerController? caller, CommandInfo command)
 		{
 			if (_database == null) return;
 			string callerName = caller == null ? "Console" : caller.PlayerName;
+			string callerSteamId = caller?.SteamID.ToString() ?? "Console";
+
 			string foundPlayerName = string.Empty;
 			string foundPlayerSteamId64 = string.Empty;
+			string reason = command.GetArg(2);
 
 			if (command.GetArg(1).Length <= 1)
 			{
@@ -951,18 +944,13 @@ namespace CS2_SimpleAdmin
 				return;
 			}
 
-			if (_discordWebhookClientLog != null && _localizer != null)
-			{
-				string communityUrl = caller != null ? "<" + new SteamID(caller.SteamID).ToCommunityUrl().ToString() + ">" : "<https://steamcommunity.com/profiles/0>";
-				_discordWebhookClientLog.SendMessageAsync(Helper.GenerateMessageDiscord(_localizer["sa_discord_log_command", $"[{callerName}]({communityUrl})", command.GetCommandString]));
-			}
-
+			Helper.SendDiscordLogMessage(caller, command, _discordWebhookClientLog, _localizer);
 			Helper.LogCommand(caller, command);
 
 			string pattern = command.GetArg(1);
 			bool found = false;
 			MuteManager _muteManager = new(_database);
-			PlayerPenaltyManager playerPenaltyManager = new PlayerPenaltyManager();
+			PlayerPenaltyManager playerPenaltyManager = new();
 
 			if (Helper.IsValidSteamID64(pattern))
 			{
@@ -975,7 +963,7 @@ namespace CS2_SimpleAdmin
 						if (TagsDetected)
 							Server.ExecuteCommand($"css_tag_unmute {player!.SteamID}");
 
-						playerPenaltyManager.RemovePenaltiesByType(player!.Slot, PenaltyType.Silence);
+						PlayerPenaltyManager.RemovePenaltiesByType(player!.Slot, PenaltyType.Silence);
 						player.VoiceFlags = VoiceFlags.Normal;
 						found = true;
 						foundPlayerName = player.PlayerName;
@@ -994,7 +982,7 @@ namespace CS2_SimpleAdmin
 						if (TagsDetected)
 							Server.ExecuteCommand($"css_tag_unmute {player!.SteamID}");
 
-						playerPenaltyManager.RemovePenaltiesByType(player!.Slot, PenaltyType.Silence);
+						PlayerPenaltyManager.RemovePenaltiesByType(player!.Slot, PenaltyType.Silence);
 						player.VoiceFlags = VoiceFlags.Normal;
 						pattern = player.SteamID.ToString();
 						found = true;
@@ -1006,13 +994,13 @@ namespace CS2_SimpleAdmin
 
 			if (found)
 			{
-				Task.Run(async () => { await _muteManager.UnmutePlayer(foundPlayerSteamId64, 2); }); // Unmute by type 2 (silence)
+				Task.Run(async () => { await _muteManager.UnmutePlayer(foundPlayerSteamId64, callerSteamId, reason, 2); }); // Unmute by type 2 (silence)
 				command.ReplyToCommand($"Unsilenced player {foundPlayerName}.");
 				return;
 			}
 			else
 			{
-				Task.Run(async () => { await _muteManager.UnmutePlayer(pattern, 2); }); // Unmute by type 2 (silence)
+				Task.Run(async () => { await _muteManager.UnmutePlayer(pattern, callerSteamId, reason, 2); }); // Unmute by type 2 (silence)
 				command.ReplyToCommand($"Unsilenced offline player with pattern {pattern}.");
 				return;
 			}

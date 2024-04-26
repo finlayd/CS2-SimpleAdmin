@@ -24,9 +24,9 @@ namespace CS2_SimpleAdmin.Menus
 			// TODO: Localize options
 			// options added in order
 
-			options.Add(new ChatMenuOptionData("Add Admin", () => PlayersMenu.OpenAliveMenu(admin, "Add Admin", AddAdminMenu)));
-			options.Add(new ChatMenuOptionData("Remove Admin", () => PlayersMenu.OpenAliveMenu(admin, "Remove Admin", RemoveAdmin, player => player != admin && admin.CanTarget(player))));
-			options.Add(new ChatMenuOptionData("Reload Admins", ReloadAdmins));
+			options.Add(new ChatMenuOptionData("Add Admin", () => PlayersMenu.OpenRealPlayersMenu(admin, "Add Admin", AddAdminMenu)));
+			options.Add(new ChatMenuOptionData("Remove Admin", () => PlayersMenu.OpenAdminPlayersMenu(admin, "Remove Admin", RemoveAdmin, player => player != admin && admin.CanTarget(player))));
+			options.Add(new ChatMenuOptionData("Reload Admins", () => ReloadAdmins(admin)));
 
 			foreach (ChatMenuOptionData menuOptionData in options)
 			{
@@ -69,7 +69,7 @@ namespace CS2_SimpleAdmin.Menus
 		private static void AddAdmin(CCSPlayerController admin, CCSPlayerController player, string flag)
 		{
 			// TODO: Change default immunity?
-			CS2_SimpleAdmin.Instance.AddAdmin(admin, player.SteamID.ToString(), player.PlayerName, flag, 10);
+			CS2_SimpleAdmin.AddAdmin(admin, player.SteamID.ToString(), player.PlayerName, flag, 10);
 		}
 
 		private static void RemoveAdmin(CCSPlayerController admin, CCSPlayerController player)
@@ -77,9 +77,9 @@ namespace CS2_SimpleAdmin.Menus
 			CS2_SimpleAdmin.Instance.RemoveAdmin(admin, player.SteamID.ToString());
 		}
 
-		private static void ReloadAdmins()
+		private static void ReloadAdmins(CCSPlayerController admin)
 		{
-			CS2_SimpleAdmin.Instance.ReloadAdmins();
+			CS2_SimpleAdmin.Instance.ReloadAdmins(admin);
 		}
 	}
 }
