@@ -1,27 +1,26 @@
 ﻿using Microsoft.Extensions.Logging;
 using MySqlConnector;
 
-namespace CS2_SimpleAdmin;
+namespace CS2_SimpleAdmin.Database;
 
 public class Migration(Database database)
 {
-	private readonly Database _database = database;
-
 	public void ExecuteMigrations()
 	{
-		string migrationsDirectory = CS2_SimpleAdmin.Instance.ModuleDirectory + "/Database/Migrations";
+		var migrationsDirectory = CS2_SimpleAdmin.Instance.ModuleDirectory + "/Database/Migrations";
 
 		var files = Directory.GetFiles(migrationsDirectory, "*.sql")
 							 .OrderBy(f => f);
 
-		using MySqlConnection connection = _database.GetConnection();
+		using var connection = database.GetConnection();
 
 		// Create sa_migrations table if not exists
-		using var cmd = new MySqlCommand(@"
-            CREATE TABLE IF NOT EXISTS `sa_migrations` (
-                `id` INT PRIMARY KEY AUTO_INCREMENT,
-                `version` VARCHAR(255) NOT NULL
-            );", connection);
+		using var cmd = new MySqlCommand("""
+		                                             CREATE TABLE IF NOT EXISTS `sa_migrations` (
+		                                                 `id` INT PRIMARY KEY AUTO_INCREMENT,
+		                                                 `version` VARCHAR(255) NOT NULL
+		                                             );
+		                                 """, connection);
 
 		cmd.ExecuteNonQuery();
 
@@ -33,18 +32,16 @@ public class Migration(Database database)
 			var version = Path.GetFileNameWithoutExtension(file);
 
 			// Check if the migration has already been applied
-			if (string.Compare(version, lastAppliedVersion, StringComparison.OrdinalIgnoreCase) > 0)
-			{
-				var sqlScript = File.ReadAllText(file);
+			if (string.Compare(version, lastAppliedVersion, StringComparison.OrdinalIgnoreCase) <= 0) continue;
+			var sqlScript = File.ReadAllText(file);
 
-				using var cmdMigration = new MySqlCommand(sqlScript, connection);
-				cmdMigration.ExecuteNonQuery();
+			using var cmdMigration = new MySqlCommand(sqlScript, connection);
+			cmdMigration.ExecuteNonQuery();
 
-				// Update the last applied migration version
-				UpdateLastAppliedVersion(connection, version);
+			// Update the last applied migration version
+			UpdateLastAppliedVersion(connection, version);
 
-				CS2_SimpleAdmin._logger?.LogInformation($"Migration \"{version}\" successfully applied.");
-			}
+			CS2_SimpleAdmin._logger?.LogInformation($"Migration \"{version}\" successfully applied.");
 		}
 	}
 

@@ -1,17 +1,15 @@
 ﻿using Microsoft.Extensions.Logging;
 using MySqlConnector;
 
-namespace CS2_SimpleAdmin;
+namespace CS2_SimpleAdmin.Database;
 
 public class Database(string dbConnectionString)
 {
-	private readonly string _dbConnectionString = dbConnectionString;
-
 	public MySqlConnection GetConnection()
 	{
 		try
 		{
-			var connection = new MySqlConnection(_dbConnectionString);
+			var connection = new MySqlConnection(dbConnectionString);
 			connection.Open();
 			return connection;
 		}
@@ -27,7 +25,7 @@ public class Database(string dbConnectionString)
 	{
 		try
 		{
-			var connection = new MySqlConnection(_dbConnectionString);
+			var connection = new MySqlConnection(dbConnectionString);
 			await connection.OpenAsync();
 			return connection;
 		}
@@ -46,7 +44,7 @@ public class Database(string dbConnectionString)
 
 	public bool CheckDatabaseConnection()
 	{
-		using MySqlConnection connection = GetConnection();
+		using var connection = GetConnection();
 
 		try
 		{
