@@ -18,21 +18,19 @@ namespace CS2_SimpleAdmin
 		{
 			if (caller == null || !caller.IsValid || command.GetCommandString[command.GetCommandString.IndexOf(' ')..].Length == 0) return;
 
-			Helper.SendDiscordLogMessage(caller, command, DiscordWebhookClientLog, _localizer);
 			Helper.LogCommand(caller, command);
 
 			var utf8BytesString = Encoding.UTF8.GetBytes(command.GetCommandString[command.GetCommandString.IndexOf(' ')..]);
 			var utf8String = Encoding.UTF8.GetString(utf8BytesString);
 
 			foreach (var player in Helper.GetValidPlayers()
-				         .Where(p => AdminManager.PlayerHasPermissions(p, "@css/chat")))
+						 .Where(p => AdminManager.PlayerHasPermissions(p, "@css/chat")))
 			{
-				using (new WithTemporaryCulture(player.GetLanguage()))
-				{
-					StringBuilder sb = new();
-					sb.Append(_localizer!["sa_adminchat_template_admin", caller == null ? "Console" : caller.PlayerName, utf8String]);
-					player.PrintToChat(sb.ToString());
-				}
+				if (_localizer != null)
+					player.SendLocalizedMessage(_localizer,
+										"sa_adminchat_template_admin",
+										caller == null ? "Console" : caller.PlayerName,
+										utf8String);
 			}
 		}
 
@@ -46,17 +44,14 @@ namespace CS2_SimpleAdmin
 			var utf8BytesString = Encoding.UTF8.GetBytes(command.GetCommandString[command.GetCommandString.IndexOf(' ')..]);
 			var utf8String = Encoding.UTF8.GetString(utf8BytesString);
 
-			Helper.SendDiscordLogMessage(caller, command, DiscordWebhookClientLog, _localizer);
 			Helper.LogCommand(caller, command);
 
 			foreach (var player in Helper.GetValidPlayers())
 			{
-				using (new WithTemporaryCulture(player.GetLanguage()))
-				{
-					StringBuilder sb = new();
-					sb.Append(_localizer!["sa_adminsay_prefix", utf8String]);
-					player.PrintToChat(sb.ToString());
-				}
+				if (_localizer != null)
+					player.SendLocalizedMessage(_localizer,
+										"sa_adminsay_prefix",
+										utf8String);
 			}
 		}
 
@@ -69,7 +64,7 @@ namespace CS2_SimpleAdmin
 
 			var targets = GetTarget(command);
 			if (targets == null) return;
-			var playersToTarget = targets.Players.Where(player => player.IsValid && player.SteamID.ToString().Length == 17 && !player.IsHLTV).ToList();
+			var playersToTarget = targets.Players.Where(player => player is { IsValid: true, IsHLTV: false }).ToList();
 
 			//Helper.LogCommand(caller, command);
 
@@ -95,7 +90,6 @@ namespace CS2_SimpleAdmin
 			var utf8BytesString = Encoding.UTF8.GetBytes(command.GetCommandString[command.GetCommandString.IndexOf(' ')..]);
 			var utf8String = Encoding.UTF8.GetString(utf8BytesString);
 
-			Helper.SendDiscordLogMessage(caller, command, DiscordWebhookClientLog, _localizer);
 			Helper.LogCommand(caller, command);
 
 			Helper.PrintToCenterAll(utf8String.ReplaceColorTags());
@@ -109,7 +103,6 @@ namespace CS2_SimpleAdmin
 			var utf8BytesString = Encoding.UTF8.GetBytes(command.GetCommandString[command.GetCommandString.IndexOf(' ')..]);
 			var utf8String = Encoding.UTF8.GetString(utf8BytesString);
 
-			Helper.SendDiscordLogMessage(caller, command, DiscordWebhookClientLog, _localizer);
 			Helper.LogCommand(caller, command);
 
 			VirtualFunctions.ClientPrintAll(

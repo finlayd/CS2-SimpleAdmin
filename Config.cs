@@ -10,7 +10,7 @@ namespace CS2_SimpleAdmin
 
 		[JsonPropertyName("duration")]
 		public int Duration { get; set; }
-	}
+	}	
 
 	public class AdminFlag
 	{
@@ -20,14 +20,70 @@ namespace CS2_SimpleAdmin
 		[JsonPropertyName("flag")]
 		public required string Flag { get; set; }
 	}
+	
+	public class DiscordPenaltySetting
+	{
+		[JsonPropertyName("name")]
+		public required string Name { get; set; }
+
+		[JsonPropertyName("value")] 
+		public string Value { get; set; } = "";
+	}
 
 	public class Discord
 	{
 		[JsonPropertyName("DiscordLogWebhook")]
 		public string DiscordLogWebhook { get; set; } = "";
 
-		[JsonPropertyName("DiscordPenaltyWebhook")]
-		public string DiscordPenaltyWebhook { get; set; } = "";
+		[JsonPropertyName("DiscordPenaltyBanSettings")]
+		public DiscordPenaltySetting[] DiscordPenaltyBanSettings { get; set; } =
+		[
+			new DiscordPenaltySetting { Name = "Color", Value = "" },
+			new DiscordPenaltySetting { Name = "Webhook", Value = "" },
+			new DiscordPenaltySetting { Name = "ThumbnailUrl", Value = "" },
+			new DiscordPenaltySetting { Name = "ImageUrl", Value = "" },
+			new DiscordPenaltySetting { Name = "Footer", Value = "" },
+		];
+		
+		[JsonPropertyName("DiscordPenaltyMuteSettings")]
+		public DiscordPenaltySetting[] DiscordPenaltyMuteSettings { get; set; } =
+		[
+			new DiscordPenaltySetting { Name = "Color", Value = "" },
+			new DiscordPenaltySetting { Name = "Webhook", Value = "" },
+			new DiscordPenaltySetting { Name = "ThumbnailUrl", Value = "" },
+			new DiscordPenaltySetting { Name = "ImageUrl", Value = "" },
+			new DiscordPenaltySetting { Name = "Footer", Value = "" },
+		];
+		
+		[JsonPropertyName("DiscordPenaltyGagSettings")]
+		public DiscordPenaltySetting[] DiscordPenaltyGagSettings { get; set; } =
+		[
+			new DiscordPenaltySetting { Name = "Color", Value = "" },
+			new DiscordPenaltySetting { Name = "Webhook", Value = "" },
+			new DiscordPenaltySetting { Name = "ThumbnailUrl", Value = "" },
+			new DiscordPenaltySetting { Name = "ImageUrl", Value = "" },
+			new DiscordPenaltySetting { Name = "Footer", Value = "" },
+		];
+		
+		[JsonPropertyName("DiscordPenaltySilenceSettings")]
+		public DiscordPenaltySetting[] DiscordPenaltySilenceSettings { get; set; } =
+		[
+			new DiscordPenaltySetting { Name = "Color", Value = "" },
+			new DiscordPenaltySetting { Name = "Webhook", Value = "" },
+			new DiscordPenaltySetting { Name = "ThumbnailUrl", Value = "" },
+			new DiscordPenaltySetting { Name = "ImageUrl", Value = "" },
+			new DiscordPenaltySetting { Name = "Footer", Value = "" },
+		];		
+		
+		[JsonPropertyName("DiscordPenaltyWarnSettings")]
+		public DiscordPenaltySetting[] DiscordPenaltyWarnSettings { get; set; } =
+		[
+			new DiscordPenaltySetting { Name = "Color", Value = "" },
+			new DiscordPenaltySetting { Name = "Webhook", Value = "" },
+			new DiscordPenaltySetting { Name = "ThumbnailUrl", Value = "" },
+			new DiscordPenaltySetting { Name = "ImageUrl", Value = "" },
+			new DiscordPenaltySetting { Name = "Footer", Value = "" },
+		];
 	}
 
 	public class CustomServerCommandData
@@ -78,6 +134,15 @@ namespace CS2_SimpleAdmin
 			"Chat Abuse",
 			"Admin disrespect",
 			"Other"
+		];		
+		
+		[JsonPropertyName("WarnReasons")]
+		public List<string> WarnReasons { get; set; } =
+		[
+			"Voice Abuse",
+			"Chat Abuse",
+			"Admin disrespect",
+			"Other"
 		];
 
 		[JsonPropertyName("MuteReasons")]
@@ -102,6 +167,7 @@ namespace CS2_SimpleAdmin
 			new AdminFlag { Name = "Ban", Flag = "@css/ban" },
 			new AdminFlag { Name = "Perm Ban", Flag = "@css/permban" },
 			new AdminFlag { Name = "Unban", Flag = "@css/unban" },
+			new AdminFlag { Name = "Show IP", Flag = "@css/showip" },
 			new AdminFlag { Name = "Cvar", Flag = "@css/cvar" },
 			new AdminFlag { Name = "Rcon", Flag = "@css/rcon" },
 			new AdminFlag { Name = "Root (all flags)", Flag = "@css/root" }
@@ -110,7 +176,7 @@ namespace CS2_SimpleAdmin
 
 	public class CS2_SimpleAdminConfig : BasePluginConfig
 	{
-		[JsonPropertyName("ConfigVersion")] public override int Version { get; set; } = 13;
+		[JsonPropertyName("ConfigVersion")] public override int Version { get; set; } = 18;
 
 		[JsonPropertyName("DatabaseHost")]
 		public string DatabaseHost { get; set; } = "";
@@ -130,20 +196,37 @@ namespace CS2_SimpleAdmin
 		[JsonPropertyName("EnableMetrics")]
 		public bool EnableMetrics { get; set; } = true;
 
+		[JsonPropertyName("EnableUpdateCheck")]
+		public bool EnableUpdateCheck { get; set; } = true;
+
+		[JsonPropertyName("ReloadAdminsEveryMapChange")]
+		public bool ReloadAdminsEveryMapChange { get; set; } = false;
+
 		[JsonPropertyName("UseChatMenu")]
 		public bool UseChatMenu { get; set; } = false;
 
 		[JsonPropertyName("KickTime")]
 		public int KickTime { get; set; } = 5;
-
+		
+		[JsonPropertyName("WarnThreshold")]
+		public Dictionary<int, string> WarnThreshold { get; set; } = new()
+		{
+			{ 998, "css_addban STEAMID64 60 \"3/4 Warn\"" },
+			{ 999, "css_ban #USERID 120 \"4/4 Warn\"" },
+		};
+		
 		[JsonPropertyName("DisableDangerousCommands")]
 		public bool DisableDangerousCommands { get; set; } = true;
-		
+
 		[JsonPropertyName("BanType")]
 		public int BanType { get; set; } = 1;
-		
+
+		[JsonPropertyName("TimeMode")]
+		public int TimeMode { get; set; } = 1;
+
 		[JsonPropertyName("MaxBanDuration")]
-		public int MaxBanDuration { get; set; } = 60 * 24 * 7; // 7 days
+		public int MaxBanDuration { get; set; } = 60 * 24 * 7;
+		
 		[JsonPropertyName("MultiServerMode")]
 		public bool MultiServerMode { get; set; } = true;
 
@@ -157,10 +240,10 @@ namespace CS2_SimpleAdmin
 		public Discord Discord { get; set; } = new();
 
 		[JsonPropertyName("DefaultMaps")]
-		public List<string> DefaultMaps { get; set; } = [];
+		public List<string> DefaultMaps { get; set; } = new();
 
 		[JsonPropertyName("WorkshopMaps")]
-		public List<string> WorkshopMaps { get; set; } = [];
+		public Dictionary<string, long?> WorkshopMaps { get; set; } = new();
 
 		[JsonPropertyName("CustomServerCommands")]
 		public List<CustomServerCommandData> CustomServerCommands { get; set; } = new();

@@ -11,23 +11,26 @@ using System.Collections.Concurrent;
 
 namespace CS2_SimpleAdmin;
 
-[MinimumApiVersion(215)]
+[MinimumApiVersion(253)]
 public partial class CS2_SimpleAdmin : BasePlugin, IPluginConfig<CS2_SimpleAdminConfig>
 {
 	public static CS2_SimpleAdmin Instance { get; private set; } = new();
 
 	public static IStringLocalizer? _localizer;
 	public static readonly Dictionary<string, int> VoteAnswers = [];
-	private static readonly ConcurrentBag<int> GodPlayers = [];
-	private static readonly ConcurrentBag<int> SilentPlayers = [];
+	private static bool _serverLoaded;
+	private static readonly HashSet<int> GodPlayers = [];
+	private static readonly HashSet<int> SilentPlayers = [];
 	private static readonly ConcurrentBag<string> BannedPlayers = [];
+	private static readonly Dictionary<ulong, string> RenamedPlayers = [];
+	//private static readonly ConcurrentBag<int> SilentPlayers = [];
 	private static bool _tagsDetected;
-	private static bool _adminsLoaded;
 	public static bool VoteInProgress = false;
 	public static int? ServerId = null;
+	private static readonly bool UnlockedCommands = CoreConfig.UnlockConCommands;
 
 	public static DiscordWebhookClient? DiscordWebhookClientLog;
-	public static DiscordWebhookClient? DiscordWebhookClientPenalty;
+	// public static DiscordWebhookClient? DiscordWebhookClientPenalty;
 
 	private string _dbConnectionString = string.Empty;
 	private static Database.Database? _database;
@@ -38,7 +41,7 @@ public partial class CS2_SimpleAdmin : BasePlugin, IPluginConfig<CS2_SimpleAdmin
 	public override string ModuleName => "CS2-SimpleAdmin" + (Helper.IsDebugBuild ? " (DEBUG)" : " (RELEASE)");
 	public override string ModuleDescription => "Simple admin plugin for Counter-Strike 2 :)";
 	public override string ModuleAuthor => "daffyy & Dliix66";
-	public override string ModuleVersion => "1.4.3a";
+	public override string ModuleVersion => "1.5.2c";
 
 	public CS2_SimpleAdminConfig Config { get; set; } = new();
 
@@ -50,24 +53,38 @@ public partial class CS2_SimpleAdmin : BasePlugin, IPluginConfig<CS2_SimpleAdmin
 
 		if (hotReload)
 		{
+			_serverLoaded = false;
+			OnGameServerSteamAPIActivated();
 			OnMapStart(string.Empty);
 		}
 
 		_cBasePlayerControllerSetPawnFunc = new MemoryFunctionVoid<CBasePlayerController, CCSPlayerPawn, bool, bool>(GameData.GetSignature("CBasePlayerController_SetPawn"));
 	}
 
+	public override void Unload(bool hotReload)
+	{
+		if (hotReload) return;
+
+		RemoveListener(OnMapStart);
+		RemoveCommandListener("say", OnCommandSay, HookMode.Post);
+		RemoveCommandListener("say_team", OnCommandTeamSay, HookMode.Post);
+	}
+
+	public override void OnAllPluginsLoaded(bool hotReload)
+	{
+		AddTimer(3.0f, () => ReloadAdmins(null));
+	}
+
 	public void OnConfigParsed(CS2_SimpleAdminConfig config)
 	{
-		
 		if (config.DatabaseHost.Length < 1 || config.DatabaseName.Length < 1 || config.DatabaseUser.Length < 1)
 		{
 			throw new Exception("[CS2-SimpleAdmin] You need to setup Database credentials in config!");
 		}
-		
+
 		Instance = this;
 		_logger = Logger;
 
-			
 		MySqlConnectionStringBuilder builder = new()
 		{
 			Server = config.DatabaseHost,
@@ -92,38 +109,6 @@ public partial class CS2_SimpleAdmin : BasePlugin, IPluginConfig<CS2_SimpleAdmin
 
 		Task.Run(() => _database.DatabaseMigration());
 
-		/*
-		Task.Run(async () =>
-		{
-			try
-			{
-				using MySqlConnection connection = await _database.GetConnectionAsync();
-				using MySqlTransaction transaction = await connection.BeginTransactionAsync();
-
-				try
-				{
-					string sqlFilePath = ModuleDirectory + "/Database/database_setup.sql";
-					string sql = await File.ReadAllTextAsync(sqlFilePath);
-
-					await connection.QueryAsync(sql, transaction: transaction);
-					await transaction.CommitAsync();
-
-					Console.WriteLine("[CS2-SimpleAdmin] Connected to database!");
-				}
-				catch (Exception)
-				{
-					await transaction.RollbackAsync();
-					throw;
-				}
-			}
-			catch (Exception ex)
-			{
-				Logger.LogError($"Unable to connect to the database: {ex.Message}");
-				throw;
-			}
-		});
-		*/
-
 		Config = config;
 		Helper.UpdateConfig(config);
 
@@ -136,11 +121,10 @@ public partial class CS2_SimpleAdmin : BasePlugin, IPluginConfig<CS2_SimpleAdmin
 
 		if (!string.IsNullOrEmpty(Config.Discord.DiscordLogWebhook))
 			DiscordWebhookClientLog = new DiscordWebhookClient(Config.Discord.DiscordLogWebhook);
-		if (!string.IsNullOrEmpty(Config.Discord.DiscordPenaltyWebhook))
-			DiscordWebhookClientPenalty = new DiscordWebhookClient(Config.Discord.DiscordPenaltyWebhook);
-		
+
 		PluginInfo.ShowAd(ModuleVersion);
-		_ = PluginInfo.CheckVersion(ModuleVersion, _logger);
+		if (Config.EnableUpdateCheck)
+			Task.Run(async () => await PluginInfo.CheckVersion(ModuleVersion, _logger));
 	}
 
 	private static TargetResult? GetTarget(CommandInfo command)

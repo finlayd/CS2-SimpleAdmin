@@ -4,7 +4,6 @@ using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Core.Translations;
 using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
-using System.Text;
 
 namespace CS2_SimpleAdmin
 {
@@ -22,7 +21,7 @@ namespace CS2_SimpleAdmin
 
 			var targets = GetTarget(command);
 			if (targets == null) return;
-			var playersToTarget = targets.Players.Where(player => player.IsValid && player.SteamID.ToString().Length == 17 && !player.IsHLTV).ToList();
+			var playersToTarget = targets.Players.Where(player => player is { IsValid: true, IsHLTV: false }).ToList();
 
 			if (playersToTarget.Count > 1 && Config.DisableDangerousCommands || playersToTarget.Count == 0)
 			{
@@ -49,6 +48,8 @@ namespace CS2_SimpleAdmin
 		internal static void Gag(CCSPlayerController? caller, CCSPlayerController? player, int time, string reason, string? callerName = null, MuteManager? muteManager = null, PlayerPenaltyManager? playerPenaltyManager = null, CommandInfo? command = null)
 		{
 			if (_database == null) return;
+			if (!caller.CanTarget(player)) return;
+
 			callerName ??= caller == null ? "Console" : caller.PlayerName;
 			muteManager ??= new MuteManager(_database);
 
@@ -77,7 +78,7 @@ namespace CS2_SimpleAdmin
 			PlayerPenaltyManager.AddPenalty(player!.Slot, PenaltyType.Gag, DateTime.Now.AddMinutes(time), time);
 			if (time == 0)
 			{
-				if (!player.IsBot && !player.IsHLTV)
+				if (!player.IsBot)
 				{
 					using (new WithTemporaryCulture(player.GetLanguage()))
 					{
@@ -87,20 +88,20 @@ namespace CS2_SimpleAdmin
 
 				if (caller == null || !SilentPlayers.Contains(caller.Slot))
 				{
-					foreach (var controller in Helper.GetValidPlayers())
+					foreach (var controller in Helper.GetValidPlayers().Where(controller => controller is { IsValid: true, IsBot: false }))
 					{
-						using (new WithTemporaryCulture(controller.GetLanguage()))
-						{
-							StringBuilder sb = new(_localizer!["sa_prefix"]);
-							sb.Append(_localizer["sa_admin_gag_message_perm", callerName, player.PlayerName, reason]);
-							controller.PrintToChat(sb.ToString());
-						}
+						if (_localizer != null)
+							controller.SendLocalizedMessage(_localizer,
+												"sa_admin_gag_message_perm",
+												callerName,
+												player.PlayerName,
+												reason);
 					}
 				}
 			}
 			else
 			{
-				if (!player.IsBot && !player.IsHLTV)
+				if (!player.IsBot)
 				{
 					using (new WithTemporaryCulture(player.GetLanguage()))
 					{
@@ -110,22 +111,21 @@ namespace CS2_SimpleAdmin
 
 				if (caller == null || !SilentPlayers.Contains(caller.Slot))
 				{
-					foreach (var controller in Helper.GetValidPlayers())
+					foreach (var controller in Helper.GetValidPlayers().Where(controller => controller is { IsValid: true, IsBot: false }))
 					{
-						using (new WithTemporaryCulture(controller.GetLanguage()))
-						{
-							StringBuilder sb = new(_localizer!["sa_prefix"]);
-							sb.Append(_localizer["sa_admin_gag_message_time", callerName, player.PlayerName, reason, time]);
-							controller.PrintToChat(sb.ToString());
-						}
+						if (_localizer != null)
+							controller.SendLocalizedMessage(_localizer,
+												"sa_admin_gag_message_time",
+												callerName,
+												player.PlayerName,
+												reason,
+												time);
 					}
 				}
 			}
 
-			if (command == null) return;
-			Helper.SendDiscordLogMessage(caller, command, DiscordWebhookClientLog, _localizer);
-			Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Gag, DiscordWebhookClientPenalty, _localizer);
-			Helper.LogCommand(caller, command);
+			Helper.LogCommand(caller, $"css_gag {(string.IsNullOrEmpty(player.PlayerName) ? player.SteamID.ToString() : player.PlayerName)} {time} {reason}");
+			Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Gag, _localizer);
 		}
 
 		[ConsoleCommand("css_addgag")]
@@ -141,13 +141,13 @@ namespace CS2_SimpleAdmin
 
 			if (string.IsNullOrEmpty(command.GetArg(1))) return;
 
-			var steamid = command.GetArg(1);
-
-			if (!Helper.IsValidSteamId64(steamid))
+			if (!Helper.ValidateSteamId(command.GetArg(1), out var steamId) || steamId == null)
 			{
 				command.ReplyToCommand($"Invalid SteamID64.");
 				return;
 			}
+
+			var steamid = steamId.SteamId64.ToString();
 
 			var reason = _localizer?["sa_unknown"] ?? "Unknown";
 
@@ -179,7 +179,7 @@ namespace CS2_SimpleAdmin
 
 					if (time == 0)
 					{
-						if (!player.IsBot && !player.IsHLTV)
+						if (!player.IsBot)
 							using (new WithTemporaryCulture(player.GetLanguage()))
 							{
 								player.PrintToCenter(_localizer!["sa_player_gag_message_perm", reason, caller == null ? "Console" : caller.PlayerName]);
@@ -187,14 +187,14 @@ namespace CS2_SimpleAdmin
 
 						if (caller == null || !SilentPlayers.Contains(caller.Slot))
 						{
-							foreach (var controller in Helper.GetValidPlayers())
+							foreach (var controller in Helper.GetValidPlayers().Where(controller => controller is { IsValid: true, IsBot: false }))
 							{
-								using (new WithTemporaryCulture(controller.GetLanguage()))
-								{
-									StringBuilder sb = new(_localizer!["sa_prefix"]);
-									sb.Append(_localizer["sa_admin_gag_message_perm", callerName, player.PlayerName, reason]);
-									controller.PrintToChat(sb.ToString());
-								}
+								if (_localizer != null)
+									controller.SendLocalizedMessage(_localizer,
+														"sa_admin_gag_message_perm",
+														callerName,
+														player.PlayerName,
+														reason);
 							}
 						}
 					}
@@ -208,14 +208,15 @@ namespace CS2_SimpleAdmin
 
 						if (caller == null || !SilentPlayers.Contains(caller.Slot))
 						{
-							foreach (var controller in Helper.GetValidPlayers())
+							foreach (var controller in Helper.GetValidPlayers().Where(controller => controller is { IsValid: true, IsBot: false }))
 							{
-								using (new WithTemporaryCulture(controller.GetLanguage()))
-								{
-									StringBuilder sb = new(_localizer!["sa_prefix"]);
-									sb.Append(_localizer["sa_admin_gag_message_time", callerName, player.PlayerName, reason, time]);
-									controller.PrintToChat(sb.ToString());
-								}
+								if (_localizer != null)
+									controller.SendLocalizedMessage(_localizer,
+														"sa_admin_gag_message_time",
+														callerName,
+														player.PlayerName,
+														reason,
+														time);
 							}
 						}
 					}
@@ -226,7 +227,7 @@ namespace CS2_SimpleAdmin
 					PlayerPenaltyManager.AddPenalty(player.Slot, PenaltyType.Gag, DateTime.Now.AddMinutes(time), time);
 				}
 
-				Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Gag, DiscordWebhookClientPenalty, _localizer);
+				Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Gag, _localizer);
 			}
 
 			Task.Run(async () =>
@@ -234,7 +235,6 @@ namespace CS2_SimpleAdmin
 				await muteManager.AddMuteBySteamid(steamid, adminInfo, reason, time);
 			});
 
-			Helper.SendDiscordLogMessage(caller, command, DiscordWebhookClientLog, _localizer);
 			Helper.LogCommand(caller, command);
 
 			command.ReplyToCommand($"Gagged player with steamid {steamid}.");
@@ -257,18 +257,18 @@ namespace CS2_SimpleAdmin
 				command.ReplyToCommand($"Too short pattern to search.");
 				return;
 			}
-
-			Helper.SendDiscordLogMessage(caller, command, DiscordWebhookClientLog, _localizer);
-			Helper.LogCommand(caller, command);
-
+			
 			var found = false;
 
 			var pattern = command.GetArg(1);
+			
+			Helper.LogCommand(caller, command);
+			
 			MuteManager muteManager = new(_database);
 
-			if (Helper.IsValidSteamId64(pattern))
+			if (Helper.ValidateSteamId(pattern, out var steamId) && steamId != null)
 			{
-				var matches = Helper.GetPlayerFromSteamid64(pattern);
+				var matches = Helper.GetPlayerFromSteamid64(steamId.SteamId64.ToString());
 				if (matches.Count == 1)
 				{
 					var player = matches.FirstOrDefault();
@@ -321,7 +321,7 @@ namespace CS2_SimpleAdmin
 			/*
 			TargetResult? targets = GetTarget(command);
 			if (targets == null) return;
-			List<CCSPlayerController> playersToTarget = targets!.Players.Where(player => player!= null && player.IsValid && player.SteamID.ToString().Length == 17 &&!player.IsHLTV).ToList();
+			List<CCSPlayerController> playersToTarget = targets!.Players.Where(player => player!= null && player.IsValid && player.Connected == PlayerConnectedState.PlayerConnected &&!player.IsHLTV).ToList();
 
 			if (playersToTarget.Count > 1 && Config.DisableDangerousCommands || playersToTarget.Count == 0)
 			{
@@ -361,7 +361,7 @@ namespace CS2_SimpleAdmin
 
 			var targets = GetTarget(command);
 			if (targets == null) return;
-			var playersToTarget = targets.Players.Where(player => player.IsValid && player.SteamID.ToString().Length == 17 && !player.IsHLTV).ToList();
+			var playersToTarget = targets.Players.Where(player => player is { IsValid: true, IsHLTV: false }).ToList();
 
 			if (playersToTarget.Count > 1 && Config.DisableDangerousCommands || playersToTarget.Count == 0)
 			{
@@ -388,6 +388,8 @@ namespace CS2_SimpleAdmin
 		internal void Mute(CCSPlayerController? caller, CCSPlayerController? player, int time, string reason, string? callerName = null, MuteManager? muteManager = null, PlayerPenaltyManager? playerPenaltyManager = null, CommandInfo? command = null)
 		{
 			if (_database == null) return;
+			if (!caller.CanTarget(player)) return;
+
 			callerName ??= caller == null ? "Console" : caller.PlayerName;
 			muteManager ??= new MuteManager(_database);
 
@@ -416,7 +418,7 @@ namespace CS2_SimpleAdmin
 
 			if (time == 0)
 			{
-				if (!player.IsBot && !player.IsHLTV)
+				if (!player.IsBot)
 					using (new WithTemporaryCulture(player.GetLanguage()))
 					{
 						player.PrintToCenter(_localizer!["sa_player_mute_message_perm", reason, caller == null ? "Console" : caller.PlayerName]);
@@ -424,14 +426,14 @@ namespace CS2_SimpleAdmin
 
 				if (caller == null || !SilentPlayers.Contains(caller.Slot))
 				{
-					foreach (var controller in Helper.GetValidPlayers())
+					foreach (var controller in Helper.GetValidPlayers().Where(controller => controller is { IsValid: true, IsBot: false }))
 					{
-						using (new WithTemporaryCulture(controller.GetLanguage()))
-						{
-							StringBuilder sb = new(_localizer!["sa_prefix"]);
-							sb.Append(_localizer["sa_admin_mute_message_perm", callerName, player.PlayerName, reason]);
-							controller.PrintToChat(sb.ToString());
-						}
+						if (_localizer != null)
+							controller.SendLocalizedMessage(_localizer,
+												"sa_admin_mute_message_perm",
+												callerName,
+												player.PlayerName,
+												reason);
 					}
 				}
 			}
@@ -444,24 +446,21 @@ namespace CS2_SimpleAdmin
 					}
 				if (caller == null || !SilentPlayers.Contains(caller.Slot))
 				{
-					foreach (var controller in Helper.GetValidPlayers())
+					foreach (var controller in Helper.GetValidPlayers().Where(controller => controller is { IsValid: true, IsBot: false }))
 					{
-						using (new WithTemporaryCulture(controller.GetLanguage()))
-						{
-							StringBuilder sb = new(_localizer!["sa_prefix"]);
-							sb.Append(_localizer["sa_admin_mute_message_time", callerName, player.PlayerName, reason, time]);
-							controller.PrintToChat(sb.ToString());
-						}
+						if (_localizer != null)
+							controller.SendLocalizedMessage(_localizer,
+												"sa_admin_mute_message_time",
+												callerName,
+												player.PlayerName,
+												reason,
+												time);
 					}
 				}
 			}
-
-			if (command != null)
-			{
-				Helper.SendDiscordLogMessage(caller, command, DiscordWebhookClientLog, _localizer);
-				Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Mute, DiscordWebhookClientPenalty, _localizer);
-				Helper.LogCommand(caller, command);
-			}
+			
+			Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Mute, _localizer);
+			Helper.LogCommand(caller, $"css_mute {(string.IsNullOrEmpty(player.PlayerName) ? player.SteamID.ToString() : player.PlayerName)} {time} {reason}");
 		}
 
 		[ConsoleCommand("css_addmute")]
@@ -474,15 +473,16 @@ namespace CS2_SimpleAdmin
 
 			if (command.ArgCount < 2)
 				return;
+
 			if (string.IsNullOrEmpty(command.GetArg(1))) return;
 
-			var steamid = command.GetArg(1);
-
-			if (!Helper.IsValidSteamId64(steamid))
+			if (!Helper.ValidateSteamId(command.GetArg(1), out var steamId) || steamId == null)
 			{
 				command.ReplyToCommand($"Invalid SteamID64.");
 				return;
 			}
+
+			var steamid = steamId.SteamId64.ToString();
 
 			var reason = _localizer?["sa_unknown"] ?? "Unknown";
 
@@ -523,14 +523,14 @@ namespace CS2_SimpleAdmin
 							}
 						if (caller == null || !SilentPlayers.Contains(caller.Slot))
 						{
-							foreach (var controller in Helper.GetValidPlayers())
+							foreach (var controller in Helper.GetValidPlayers().Where(controller => controller is { IsValid: true, IsBot: false }))
 							{
-								using (new WithTemporaryCulture(controller.GetLanguage()))
-								{
-									StringBuilder sb = new(_localizer!["sa_prefix"]);
-									sb.Append(_localizer["sa_admin_mute_message_perm", callerName, player.PlayerName, reason]);
-									controller.PrintToChat(sb.ToString());
-								}
+								if (_localizer != null)
+									controller.SendLocalizedMessage(_localizer,
+														"sa_admin_mute_message_perm",
+														callerName,
+														player.PlayerName,
+														reason);
 							}
 						}
 					}
@@ -543,20 +543,21 @@ namespace CS2_SimpleAdmin
 							}
 						if (caller == null || !SilentPlayers.Contains(caller.Slot))
 						{
-							foreach (var controller in Helper.GetValidPlayers())
+							foreach (var controller in Helper.GetValidPlayers().Where(controller => controller is { IsValid: true, IsBot: false }))
 							{
-								using (new WithTemporaryCulture(controller.GetLanguage()))
-								{
-									StringBuilder sb = new(_localizer!["sa_prefix"]);
-									sb.Append(_localizer["sa_admin_mute_message_time", callerName, player.PlayerName, reason, time]);
-									controller.PrintToChat(sb.ToString());
-								}
+								if (_localizer != null)
+									controller.SendLocalizedMessage(_localizer,
+														"sa_admin_mute_message_time",
+														callerName,
+														player.PlayerName,
+														reason,
+														time);
 							}
 						}
 					}
 				}
 
-				Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Mute, DiscordWebhookClientPenalty, _localizer);
+				Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Mute, _localizer);
 			}
 
 			Task.Run(async () =>
@@ -564,7 +565,6 @@ namespace CS2_SimpleAdmin
 				await muteManager.AddMuteBySteamid(steamid, adminInfo, reason, time, 1);
 			});
 
-			Helper.SendDiscordLogMessage(caller, command, DiscordWebhookClientLog, _localizer);
 			Helper.LogCommand(caller, command);
 
 			command.ReplyToCommand($"Muted player with steamid {steamid}.");
@@ -588,16 +588,15 @@ namespace CS2_SimpleAdmin
 				return;
 			}
 
-			Helper.SendDiscordLogMessage(caller, command, DiscordWebhookClientLog, _localizer);
 			Helper.LogCommand(caller, command);
 
 			var pattern = command.GetArg(1);
 			var found = false;
 			MuteManager muteManager = new(_database);
 
-			if (Helper.IsValidSteamId64(pattern))
+			if (Helper.ValidateSteamId(pattern, out var steamId) && steamId != null)
 			{
-				var matches = Helper.GetPlayerFromSteamid64(pattern);
+				var matches = Helper.GetPlayerFromSteamid64(steamId.SteamId64.ToString());
 				if (matches.Count == 1)
 				{
 					var player = matches.FirstOrDefault();
@@ -643,7 +642,7 @@ namespace CS2_SimpleAdmin
 			/*
 			TargetResult? targets = GetTarget(command);
 			if (targets == null) return;
-			List<CCSPlayerController> playersToTarget = targets!.Players.Where(player => player!= null && player.IsValid && player.SteamID.ToString().Length == 17 &&!player.IsHLTV).ToList();
+			List<CCSPlayerController> playersToTarget = targets!.Players.Where(player => player!= null && player.IsValid && player.Connected == PlayerConnectedState.PlayerConnected &&!player.IsHLTV).ToList();
 
 			if (playersToTarget.Count > 1 && Config.DisableDangerousCommands || playersToTarget.Count == 0)
 			{
@@ -654,7 +653,7 @@ namespace CS2_SimpleAdmin
 			{
 				playersToTarget.ForEach(player =>
 				{
-					if (player.SteamID.ToString().Length == 17)
+					if (player.Connected == PlayerConnectedState.PlayerConnected)
 						Task.Run(async () =>
 						{
 							await _muteManager.UnmutePlayer(player.SteamID.ToString(), 1); // Unmute by type 1 (mute)
@@ -674,11 +673,11 @@ namespace CS2_SimpleAdmin
 			if (_database == null) return;
 			var callerName = caller == null ? "Console" : caller.PlayerName;
 
-			var reason = CS2_SimpleAdmin._localizer?["sa_unknown"] ?? "Unknown";
+			var reason = _localizer?["sa_unknown"] ?? "Unknown";
 
 			var targets = GetTarget(command);
 			if (targets == null) return;
-			var playersToTarget = targets.Players.Where(player => player.IsValid && player.SteamID.ToString().Length == 17 && !player.IsHLTV).ToList();
+			var playersToTarget = targets.Players.Where(player => player is { IsValid: true, IsHLTV: false }).ToList();
 
 			if (playersToTarget.Count > 1 && Config.DisableDangerousCommands || playersToTarget.Count == 0)
 			{
@@ -705,6 +704,8 @@ namespace CS2_SimpleAdmin
 		internal void Silence(CCSPlayerController? caller, CCSPlayerController? player, int time, string reason, string? callerName = null, MuteManager? muteManager = null, PlayerPenaltyManager? playerPenaltyManager = null, CommandInfo? command = null)
 		{
 			if (_database == null) return;
+			if (!caller.CanTarget(player)) return;
+
 			callerName ??= caller == null ? "Console" : caller.PlayerName;
 			muteManager ??= new MuteManager(_database);
 
@@ -735,7 +736,7 @@ namespace CS2_SimpleAdmin
 
 			if (time == 0)
 			{
-				if (!player.IsBot && !player.IsHLTV)
+				if (!player.IsBot)
 				{
 					using (new WithTemporaryCulture(player.GetLanguage()))
 					{
@@ -745,20 +746,20 @@ namespace CS2_SimpleAdmin
 
 				if (caller == null || !SilentPlayers.Contains(caller.Slot))
 				{
-					foreach (var controller in Helper.GetValidPlayers())
+					foreach (var controller in Helper.GetValidPlayers().Where(controller => controller is { IsValid: true, IsBot: false }))
 					{
-						using (new WithTemporaryCulture(controller.GetLanguage()))
-						{
-							StringBuilder sb = new(_localizer!["sa_prefix"]);
-							sb.Append(_localizer["sa_admin_silence_message_perm", callerName, player.PlayerName, reason]);
-							controller.PrintToChat(sb.ToString());
-						}
+						if (_localizer != null)
+							controller.SendLocalizedMessage(_localizer,
+												"sa_admin_silence_message_perm",
+												callerName,
+												player.PlayerName,
+												reason);
 					}
 				}
 			}
 			else
 			{
-				if (!player.IsBot && !player.IsHLTV)
+				if (!player.IsBot)
 				{
 					using (new WithTemporaryCulture(player.GetLanguage()))
 					{
@@ -768,24 +769,23 @@ namespace CS2_SimpleAdmin
 
 				if (caller == null || !SilentPlayers.Contains(caller.Slot))
 				{
-					foreach (var controller in Helper.GetValidPlayers())
+					foreach (var controller in Helper.GetValidPlayers().Where(controller => controller is { IsValid: true, IsBot: false }))
 					{
-						using (new WithTemporaryCulture(controller.GetLanguage()))
-						{
-							StringBuilder sb = new(_localizer!["sa_prefix"]);
-							sb.Append(_localizer["sa_admin_silence_message_time", callerName, player.PlayerName, reason, time]);
-							controller.PrintToChat(sb.ToString());
-						}
+						if (_localizer != null)
+							controller.SendLocalizedMessage(_localizer,
+												"sa_admin_silence_message_time",
+												callerName,
+												player.PlayerName,
+												reason,
+												time);
 					}
 				}
 			}
 
-			if (command != null)
-			{
-				Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Mute, DiscordWebhookClientPenalty, _localizer);
-				Helper.SendDiscordLogMessage(caller, command, DiscordWebhookClientLog, _localizer);
-				Helper.LogCommand(caller, command);
-			}
+			if (command == null) return;
+
+			Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Silence, _localizer);
+			Helper.LogCommand(caller, $"css_silence {(string.IsNullOrEmpty(player.PlayerName) ? player.SteamID.ToString() : player.PlayerName)} {time} {reason}");
 		}
 
 		[ConsoleCommand("css_addsilence")]
@@ -800,13 +800,13 @@ namespace CS2_SimpleAdmin
 				return;
 			if (string.IsNullOrEmpty(command.GetArg(1))) return;
 
-			var steamid = command.GetArg(1);
-
-			if (!Helper.IsValidSteamId64(steamid))
+			if (!Helper.ValidateSteamId(command.GetArg(1), out var steamId) || steamId == null)
 			{
 				command.ReplyToCommand($"Invalid SteamID64.");
 				return;
 			}
+
+			var steamid = steamId.SteamId64.ToString();
 
 			var reason = _localizer?["sa_unknown"] ?? "Unknown";
 
@@ -843,46 +843,47 @@ namespace CS2_SimpleAdmin
 
 					if (time == 0)
 					{
-						if (!player.IsBot && !player.IsHLTV)
+						if (player is { IsBot: false, IsHLTV: false })
 							using (new WithTemporaryCulture(player.GetLanguage()))
 							{
 								player.PrintToCenter(_localizer!["sa_player_silence_message_perm", reason, caller == null ? "Console" : caller.PlayerName]);
 							}
 						if (caller == null || !SilentPlayers.Contains(caller.Slot))
 						{
-							foreach (var controller in Helper.GetValidPlayers())
+							foreach (var controller in Helper.GetValidPlayers().Where(controller => controller is { IsValid: true, IsBot: false }))
 							{
-								using (new WithTemporaryCulture(controller.GetLanguage()))
-								{
-									StringBuilder sb = new(_localizer!["sa_prefix"]);
-									sb.Append(_localizer["sa_admin_silence_message_perm", callerName, player.PlayerName, reason]);
-									controller.PrintToChat(sb.ToString());
-								}
+								if (_localizer != null)
+									controller.SendLocalizedMessage(_localizer,
+														"sa_admin_silence_message_perm",
+														callerName,
+														player.PlayerName,
+														reason);
 							}
 						}
 					}
 					else
 					{
-						if (!player.IsBot && !player.IsHLTV)
+						if (player is { IsBot: false, IsHLTV: false })
 							using (new WithTemporaryCulture(player.GetLanguage()))
 							{
 								player.PrintToCenter(_localizer!["sa_player_silence_message_time", reason, time, caller == null ? "Console" : caller.PlayerName]);
 							}
 						if (caller == null || !SilentPlayers.Contains(caller.Slot))
 						{
-							foreach (var controller in Helper.GetValidPlayers())
+							foreach (var controller in Helper.GetValidPlayers().Where(controller => controller is { IsValid: true, IsBot: false }))
 							{
-								using (new WithTemporaryCulture(controller.GetLanguage()))
-								{
-									StringBuilder sb = new(_localizer!["sa_prefix"]);
-									sb.Append(_localizer["sa_admin_silence_message_time", callerName, player.PlayerName, reason, time]);
-									controller.PrintToChat(sb.ToString());
-								}
+								if (_localizer != null)
+									controller.SendLocalizedMessage(_localizer,
+														"sa_admin_silence_message_time",
+														callerName,
+														player.PlayerName,
+														reason,
+														time);
 							}
 						}
 					}
 
-					Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Mute, DiscordWebhookClientPenalty, _localizer);
+					Helper.SendDiscordPenaltyMessage(caller, player, reason, time, Helper.PenaltyType.Silence, _localizer);
 				}
 			}
 			Task.Run(async () =>
@@ -890,7 +891,6 @@ namespace CS2_SimpleAdmin
 				await muteManager.AddMuteBySteamid(steamid, adminInfo, reason, time, 2);
 			});
 
-			Helper.SendDiscordLogMessage(caller, command, DiscordWebhookClientLog, _localizer);
 			Helper.LogCommand(caller, command);
 
 			command.ReplyToCommand($"Silenced player with steamid {steamid}.");
@@ -914,16 +914,15 @@ namespace CS2_SimpleAdmin
 				return;
 			}
 
-			Helper.SendDiscordLogMessage(caller, command, DiscordWebhookClientLog, _localizer);
 			Helper.LogCommand(caller, command);
 
 			var pattern = command.GetArg(1);
 			var found = false;
 			MuteManager muteManager = new(_database);
 
-			if (Helper.IsValidSteamId64(pattern))
+			if (Helper.ValidateSteamId(pattern, out var steamId) && steamId != null)
 			{
-				var matches = Helper.GetPlayerFromSteamid64(pattern);
+				var matches = Helper.GetPlayerFromSteamid64(steamId.SteamId64.ToString());
 				if (matches.Count == 1)
 				{
 					var player = matches.FirstOrDefault();
@@ -974,7 +973,7 @@ namespace CS2_SimpleAdmin
 			/*
 			TargetResult? targets = GetTarget(command);
 			if (targets == null) return;
-			List<CCSPlayerController> playersToTarget = targets!.Players.Where(player => player!= null && player.IsValid && player.SteamID.ToString().Length == 17 &&!player.IsHLTV).ToList();
+			List<CCSPlayerController> playersToTarget = targets!.Players.Where(player => player!= null && player.IsValid && player.Connected == PlayerConnectedState.PlayerConnected &&!player.IsHLTV).ToList();
 
 			if (playersToTarget.Count > 1 && Config.DisableDangerousCommands || playersToTarget.Count == 0)
 			{
@@ -985,7 +984,7 @@ namespace CS2_SimpleAdmin
 			{
 				playersToTarget.ForEach(player =>
 				{
-					if (player.SteamID.ToString().Length == 17)
+					if (player.Connected == PlayerConnectedState.PlayerConnected)
 						Task.Run(async () => { await _muteManager.UnmutePlayer(player.SteamID.ToString(), 2); }); // Unmute by type 2 (silence)
 
 					if (TagsDetected)

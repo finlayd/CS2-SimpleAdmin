@@ -1,8 +1,10 @@
 ﻿using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Core.Translations;
 using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Entities;
 using CounterStrikeSharp.API.Modules.Memory;
+using Microsoft.Extensions.Localization;
 using System.Text;
 using Vector = CounterStrikeSharp.API.Modules.Utils.Vector;
 
@@ -24,12 +26,12 @@ public static class PlayerExtensions
 
 	public static bool CanTarget(this CCSPlayerController? controller, CCSPlayerController? target)
 	{
-		if (target != null && target.IsBot) return true;
-		if (controller is null) return true;
+		if (controller is null || target is null) return true;
+		if (target.IsBot) return true;
 
-		return target != null && (AdminManager.CanPlayerTarget(controller, target) ||
-		                          AdminManager.CanPlayerTarget(new SteamID(controller.SteamID),
-			                          new SteamID(target.SteamID)));
+		return AdminManager.CanPlayerTarget(controller, target) ||
+								  AdminManager.CanPlayerTarget(new SteamID(controller.SteamID),
+									  new SteamID(target.SteamID));
 	}
 
 	public static void SetSpeed(this CCSPlayerController? controller, float speed)
@@ -62,7 +64,7 @@ public static class PlayerExtensions
 	{
 		if (controller == null) return;
 		if ((health <= 0 || !controller.PawnIsAlive || controller.PlayerPawn.Value == null)) return;
-		
+
 		controller.PlayerPawn.Value.Health = health;
 
 		if (health > 100)
@@ -121,7 +123,7 @@ public static class PlayerExtensions
 
 	public static void Rename(this CCSPlayerController? controller, string newName = "Unknown")
 	{
-		newName = newName ?? CS2_SimpleAdmin._localizer?["sa_unknown"] ?? "Unknown";
+		newName ??= CS2_SimpleAdmin._localizer?["sa_unknown"] ?? "Unknown";
 
 		if (controller != null)
 		{
@@ -193,4 +195,20 @@ public static class PlayerExtensions
 		if (pawn.Health <= 0)
 			pawn.CommitSuicide(true, true);
 	}
+
+	public static void SendLocalizedMessage(this CCSPlayerController? controller, IStringLocalizer localizer, string messageKey, params object[] messageArgs)
+	{
+		if (controller == null) return;
+
+		using (new WithTemporaryCulture(controller.GetLanguage()))
+		{
+			StringBuilder sb = new(localizer["sa_prefix"]);
+			sb.Append(localizer[messageKey, messageArgs]);
+			foreach (var part in Helper.SeparateLines(sb.ToString()))
+			{
+				controller.PrintToChat(part);
+			}
+		}
+	}
+
 }
